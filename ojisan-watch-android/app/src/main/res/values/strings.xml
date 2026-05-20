@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">おじさんウォッチ</string>
+    <string name="accessibility_service_description">
+        TikTok・YouTube などの動画アプリのスクロール操作を検知し、
+        スワイプ速度と視聴時間に応じておじさんの顔をオーバーレイ表示します。
+        個人データの収集・送信は一切行いません。
+    </string>
+</resources>
