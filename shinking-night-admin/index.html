@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>管理画面 ─ 死ンキングナイト</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:       #0a0a0f;
+      --surface:  #12121a;
+      --border:   #2a2a3a;
+      --text:     #e8e8f0;
+      --muted:    #666680;
+      --alive:    #f5c842;
+      --ghost:    #9b59b6;
+      --dead:     #555568;
+      --danger:   #e74c3c;
+      --warn:     #e67e22;
+      --safe:     #27ae60;
+      --pair:     #2980b9;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', -apple-system, 'Hiragino Kaku Gothic ProN', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── ヘッダー ── */
+    header {
+      background: linear-gradient(135deg, #1a0a2e, #0d0d1a);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .flame-icon { font-size: 24px; animation: flicker 1.8s ease-in-out infinite; }
+    @keyframes flicker {
+      0%,100% { transform: scale(1) rotate(-2deg); opacity: 1; }
+      50%      { transform: scale(1.08) rotate(2deg); opacity: .85; }
+    }
+    #last-updated {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #connection-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--safe);
+      display: inline-block;
+      margin-right: 6px;
+      animation: pulse-dot 2s ease infinite;
+    }
+    @keyframes pulse-dot {
+      0%,100% { box-shadow: 0 0 0 0 rgba(39,174,96,.6); }
+      50%      { box-shadow: 0 0 0 5px rgba(39,174,96,0); }
+    }
+    #connection-dot.offline { background: var(--dead); animation: none; }
+
+    /* ── サマリーカード ── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      padding: 20px 24px 0;
+    }
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .summary-card .num {
+      font-size: 32px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+    .summary-card .lbl {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .num-alive  { color: var(--alive); }
+    .num-ghost  { color: var(--ghost); }
+    .num-dead   { color: var(--dead); }
+    .num-pair   { color: var(--pair); }
+    .num-total  { color: var(--text); }
+
+    /* ── タブ ── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 20px 24px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      padding: 8px 18px;
+      border-radius: 8px 8px 0 0;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      background: none;
+      transition: all .2s;
+    }
+    .tab.active {
+      color: var(--text);
+      background: var(--surface);
+      border-color: var(--border);
+      border-bottom-color: var(--surface);
+      margin-bottom: -1px;
+    }
+
+    /* ── コンテンツ ── */
+    .content { padding: 20px 24px; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── ソート・フィルター ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .toolbar select, .toolbar input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .filter-btn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--surface);
+      color: var(--muted);
+      transition: all .2s;
+    }
+    .filter-btn.active-filter {
+      background: rgba(245,200,66,.15);
+      border-color: var(--alive);
+      color: var(--alive);
+    }
+
+    /* ── 参加者カード ── */
+    #participants-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .p-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      position: relative;
+      transition: transform .15s;
+    }
+    .p-card:hover { transform: translateY(-2px); }
+
+    /* ステータスごとの左ボーダー */
+    .p-card.alive  { border-left: 3px solid var(--alive); }
+    .p-card.ghost  { border-left: 3px solid var(--ghost); }
+    .p-card.dead   { border-left: 3px solid var(--dead); opacity: .6; }
+    .p-card.pairing { border-left: 3px solid var(--pair); }
+
+    .p-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .p-name { font-size: 15px; font-weight: 700; }
+    .status-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 99px;
+    }
+    .badge-alive  { background: rgba(245,200,66,.2); color: var(--alive); }
+    .badge-ghost  { background: rgba(155,89,182,.2); color: var(--ghost); }
+    .badge-dead   { background: rgba(85,85,104,.2);  color: var(--dead); }
+    .badge-pair   { background: rgba(41,128,185,.2); color: #5dade2; }
+
+    /* ろうそく残り時間バー */
+    .candle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .candle-icon { font-size: 16px; }
+    .candle-bar-wrap {
+      flex: 1;
+      height: 8px;
+      background: #1e1e2a;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .candle-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width .5s ease, background .5s;
+    }
+    .candle-time {
+      font-size: 13px;
+      font-weight: 700;
+      min-width: 48px;
+      text-align: right;
+    }
+    .time-safe   { color: var(--safe); }
+    .time-warn   { color: var(--warn); }
+    .time-danger { color: var(--danger); animation: blink .7s ease infinite; }
+    .time-dead   { color: var(--dead); }
+    .time-ghost  { color: var(--ghost); }
+    @keyframes blink { 50% { opacity: .3; } }
+
+    /* 会話中バナー */
+    .conv-banner {
+      font-size: 11px;
+      font-weight: 600;
+      color: #5dade2;
+      background: rgba(41,128,185,.1);
+      border: 1px solid rgba(41,128,185,.3);
+      border-radius: 6px;
+      padding: 4px 8px;
+      margin-top: 6px;
+    }
+
+    /* メタ情報 */
+    .p-meta {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── ペアリング一覧 ── */
+    #pairings-list { display: flex; flex-direction: column; gap: 10px; }
+    .pair-card {
+      background: var(--surface);
+      border: 1px solid rgba(41,128,185,.4);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 12px;
+    }
+    .pair-name {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .pair-arrow {
+      font-size: 18px;
+      color: var(--pair);
+      text-align: center;
+    }
+    .pair-role {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .pair-status {
+      grid-column: 1 / -1;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+      margin-top: 4px;
+    }
+
+    /* ── ログ ── */
+    #event-log {
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      background: #080810;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      height: 400px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 2px;
+    }
+    .log-entry {
+      padding: 3px 6px;
+      border-radius: 4px;
+    }
+    .log-entry:hover { background: #12121a; }
+    .log-time { color: var(--muted); }
+    .log-death   { color: var(--danger); }
+    .log-ghost   { color: var(--ghost); }
+    .log-pair    { color: var(--pair); }
+    .log-revive  { color: #1abc9c; }
+    .log-join    { color: var(--safe); }
+    .log-leave   { color: var(--dead); }
+
+    /* ── 空状態 ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+
+    /* ── レスポンシブ ── */
+    @media (max-width: 600px) {
+      .summary-grid { grid-template-columns: repeat(3, 1fr); }
+      #participants-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<header>
+  <div class="header-title">
+    <span class="flame-icon">🕯️</span>
+    <span>死ンキングナイト ─ 管理画面</span>
+  </div>
+  <div style="text-align:right">
+    <div><span id="connection-dot"></span><span id="connection-status">接続中...</span></div>
+    <div id="last-updated" style="margin-top:2px">─</div>
+  </div>
+</header>
+
+<!-- サマリー -->
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="num num-total" id="sum-total">0</div>
+    <div class="lbl">総参加者</div>
+  </div>
+  <div class="summary-card">
+    <div class="num num-alive" id="sum-alive">0</div>
+    <div class="lbl">🕯️ 生存</div>
+  </div>
+  <div class="summary-card">
+    <div class="num num-ghost" id="sum-ghost">0</div>
+    <div class="lbl">👻 幽霊</div>
+  </div>
+  <div class="summary-card">
+    <div class="num num-dead" id="sum-dead">0</div>
+    <div class="lbl">💀 消滅</div>
+  </div>
+  <div class="summary-card">
+    <div class="num num-pair" id="sum-pairing">0</div>
+    <div class="lbl">🔥 会話中</div>
+  </div>
+</div>
+
+<!-- タブ -->
+<div class="tabs">
+  <button class="tab active" data-tab="participants">参加者</button>
+  <button class="tab" data-tab="pairings">ペアリング</button>
+  <button class="tab" data-tab="log">イベントログ</button>
+</div>
+
+<!-- コンテンツ -->
+<div class="content">
+
+  <!-- ── 参加者タブ ── -->
+  <div class="tab-pane active" id="tab-participants">
+    <div class="toolbar">
+      <select id="sort-select">
+        <option value="time-asc">残り時間（少ない順）</option>
+        <option value="time-desc">残り時間（多い順）</option>
+        <option value="name">名前順</option>
+        <option value="join">参加順</option>
+      </select>
+      <button class="filter-btn" data-filter="all">すべて</button>
+      <button class="filter-btn" data-filter="alive">生存</button>
+      <button class="filter-btn" data-filter="ghost">幽霊</button>
+      <button class="filter-btn" data-filter="pairing">会話中</button>
+    </div>
+    <div id="participants-grid">
+      <div class="empty-state"><div class="icon">🕯️</div>参加者を待っています...</div>
+    </div>
+  </div>
+
+  <!-- ── ペアリングタブ ── -->
+  <div class="tab-pane" id="tab-pairings">
+    <div id="pairings-list">
+      <div class="empty-state"><div class="icon">🔥</div>現在ペアリングはありません</div>
+    </div>
+  </div>
+
+  <!-- ── ログタブ ── -->
+  <div class="tab-pane" id="tab-log">
+    <div id="event-log"></div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK (CDN) -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+// ─── Firebase 設定（shinking-night と同じプロジェクト）───────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyAxwEeCSh5CGlz8aMKbpROo77a2eTgS1Cc",
+  authDomain: "shinking-night.firebaseapp.com",
+  databaseURL: "https://shinking-night-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "shinking-night",
+  storageBucket: "shinking-night.firebasestorage.app",
+  messagingSenderId: "1046470684524",
+  appId: "1:1046470684524:web:b07e305deab1645d7f8d49"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+// ─── グローバル状態 ───────────────────────────────────────────────────────
+let users    = {};   // uid → user data
+let pairings = {};   // pairingId → pairing data
+let currentFilter = 'all';
+let currentSort   = 'time-asc';
+const prevSnapshot = {};  // イベントログ用の前回スナップショット
+
+// ─── ユーティリティ ────────────────────────────────────────────────────────
+
+function calcSecondsLeft(user) {
+  if (user.isGhost) return null;
+  const elapsed = (Date.now() - user.startedAt) / 1000;
+  return Math.max(0, user.initialSeconds - elapsed);
+}
+
+function formatTime(sec) {
+  if (sec === null) return '──';
+  const s = Math.floor(sec);
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  return m > 0 ? `${m}分${String(ss).padStart(2,'0')}秒` : `${s}秒`;
+}
+
+function fmtHHMMSS(ts) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+
+function getActivePairingFor(uid) {
+  return Object.values(pairings).find(p =>
+    (p.uidA === uid || p.uidB === uid) &&
+    (p.status === 'accepted' || p.status === 'pending') &&
+    !p.completed
+  ) || null;
+}
+
+function candleColor(sec, max) {
+  if (sec === null) return '#9b59b6';
+  const ratio = sec / max;
+  if (ratio > 0.5) return '#27ae60';
+  if (ratio > 0.25) return '#e67e22';
+  return '#e74c3c';
+}
+
+function addLog(cls, msg) {
+  const log = document.getElementById('event-log');
+  const el  = document.createElement('div');
+  el.className = `log-entry ${cls}`;
+  el.innerHTML = `<span class="log-time">[${fmtHHMMSS(Date.now())}]</span> ${msg}`;
+  log.prepend(el);
+  // 最大200件
+  while (log.children.length > 200) log.removeChild(log.lastChild);
+}
+
+// ─── Firebase リッスン ────────────────────────────────────────────────────
+
+// 接続状態
+onValue(ref(db, '.info/connected'), snap => {
+  const online = snap.val() === true;
+  const dot  = document.getElementById('connection-dot');
+  const stat = document.getElementById('connection-status');
+  dot.className  = online ? '' : 'offline';
+  stat.textContent = online ? 'リアルタイム接続中' : 'オフライン';
+});
+
+// ユーザー一覧
+onValue(ref(db, 'users'), snap => {
+  const data = snap.val() || {};
+
+  // イベント検出
+  Object.entries(data).forEach(([uid, u]) => {
+    const prev = prevSnapshot[uid];
+    if (!prev) {
+      addLog('log-join', `<b>${u.name}</b> が参加しました 🕯️`);
+    } else {
+      if (!prev.isGhost && u.isGhost) {
+        addLog('log-ghost', `<b>${u.name}</b> が幽霊になりました 👻`);
+      }
+      if (prev.isGhost && !u.isGhost) {
+        addLog('log-revive', `<b>${u.name}</b> が復活しました ✨`);
+      }
+    }
+    prevSnapshot[uid] = { ...u };
+  });
+
+  // 消滅した人を検出
+  Object.keys(prevSnapshot).forEach(uid => {
+    if (!data[uid]) {
+      addLog('log-leave', `<b>${prevSnapshot[uid].name}</b> が退出しました 💀`);
+      delete prevSnapshot[uid];
+    }
+  });
+
+  users = data;
+  renderAll();
+  document.getElementById('last-updated').textContent =
+    '最終更新: ' + new Date().toLocaleTimeString('ja-JP');
+});
+
+// ペアリング一覧
+onValue(ref(db, 'pairings'), snap => {
+  const data = snap.val() || {};
+
+  // 新規ペアリング検出
+  Object.entries(data).forEach(([pid, p]) => {
+    if (!pairings[pid] && p.status === 'accepted') {
+      addLog('log-pair', `🔥 <b>${p.nameA}</b> ↔ <b>${p.nameB}</b> の会話が始まりました`);
+    }
+    if (pairings[pid] && !pairings[pid].completed && p.completed) {
+      addLog('log-pair', `✅ <b>${p.nameA}</b> ↔ <b>${p.nameB}</b> の会話が完了しました`);
+    }
+  });
+
+  pairings = data;
+  renderPairings();
+  renderAll();
+});
+
+// ─── 毎100msでカウンター更新 ─────────────────────────────────────────────
+setInterval(() => {
+  document.querySelectorAll('.candle-fill').forEach(el => {
+    const uid = el.dataset.uid;
+    const u   = users[uid];
+    if (!u) return;
+
+    const sec = calcSecondsLeft(u);
+    const max = u.initialSeconds;
+
+    // バー更新
+    el.style.width  = sec === null ? '100%' : `${Math.min(sec / max * 100, 100)}%`;
+    el.style.background = candleColor(sec, max);
+
+    // 時間テキスト更新
+    const timeEl = document.querySelector(`.candle-time[data-uid="${uid}"]`);
+    if (timeEl) {
+      timeEl.textContent = formatTime(sec);
+      timeEl.className = 'candle-time ' + timeClass(sec, max);
+    }
+  });
+
+  // サマリー再計算（頻度は低くていい）
+  updateSummary();
+}, 200);
+
+// ─── レンダリング ─────────────────────────────────────────────────────────
+
+function timeClass(sec, max) {
+  if (sec === null)            return 'time-ghost';
+  if (sec === 0)               return 'time-dead';
+  const r = sec / max;
+  if (r > 0.5) return 'time-safe';
+  if (r > 0.2) return 'time-warn';
+  return 'time-danger';
+}
+
+function getUserStatus(uid, user) {
+  if (user.isGhost) return 'ghost';
+  const pairing = getActivePairingFor(uid);
+  if (pairing && pairing.status === 'accepted') return 'pairing';
+  const sec = calcSecondsLeft(user);
+  if (sec !== null && sec <= 0) return 'dead';
+  return 'alive';
+}
+
+function renderAll() {
+  updateSummary();
+  renderParticipants();
+}
+
+function updateSummary() {
+  let alive = 0, ghost = 0, dead = 0, pairing = 0;
+  Object.entries(users).forEach(([uid, u]) => {
+    const st = getUserStatus(uid, u);
+    if (st === 'alive')   alive++;
+    if (st === 'ghost')   ghost++;
+    if (st === 'dead')    dead++;
+    if (st === 'pairing') { alive++; pairing++; }
+  });
+  document.getElementById('sum-total').textContent   = Object.keys(users).length;
+  document.getElementById('sum-alive').textContent   = alive;
+  document.getElementById('sum-ghost').textContent   = ghost;
+  document.getElementById('sum-dead').textContent    = dead;
+  document.getElementById('sum-pairing').textContent = pairing;
+}
+
+function renderParticipants() {
+  const grid = document.getElementById('participants-grid');
+  let entries = Object.entries(users);
+
+  // フィルター
+  if (currentFilter !== 'all') {
+    entries = entries.filter(([uid, u]) => {
+      const st = getUserStatus(uid, u);
+      if (currentFilter === 'ghost')   return st === 'ghost';
+      if (currentFilter === 'alive')   return st === 'alive' || st === 'pairing';
+      if (currentFilter === 'pairing') return st === 'pairing';
+      return true;
+    });
+  }
+
+  // ソート
+  entries.sort(([aUid, a], [bUid, b]) => {
+    if (currentSort === 'time-asc') {
+      return (calcSecondsLeft(a) ?? Infinity) - (calcSecondsLeft(b) ?? Infinity);
+    }
+    if (currentSort === 'time-desc') {
+      return (calcSecondsLeft(b) ?? -1) - (calcSecondsLeft(a) ?? -1);
+    }
+    if (currentSort === 'name') return a.name.localeCompare(b.name);
+    if (currentSort === 'join') return a.startedAt - b.startedAt;
+    return 0;
+  });
+
+  if (entries.length === 0) {
+    grid.innerHTML = '<div class="empty-state"><div class="icon">🕯️</div>参加者を待っています...</div>';
+    return;
+  }
+
+  grid.innerHTML = entries.map(([uid, u]) => {
+    const st      = getUserStatus(uid, u);
+    const sec     = calcSecondsLeft(u);
+    const max     = u.initialSeconds;
+    const ratio   = sec === null ? 1 : Math.min(sec / max * 100, 100);
+    const pairing = getActivePairingFor(uid);
+    const partnerName = pairing
+      ? (pairing.uidA === uid ? pairing.nameB : pairing.nameA)
+      : null;
+
+    const badgeClass = { alive:'badge-alive', ghost:'badge-ghost', dead:'badge-dead', pairing:'badge-pair' }[st];
+    const badgeLabel = { alive:'🕯️ 生存', ghost:'👻 幽霊', dead:'💀 消滅', pairing:'🔥 会話中' }[st];
+
+    return `
+      <div class="p-card ${st}">
+        <div class="p-card-header">
+          <span class="p-name">${u.name}</span>
+          <span class="status-badge ${badgeClass}">${badgeLabel}</span>
+        </div>
+
+        <div class="candle-row">
+          <span class="candle-icon">${st === 'ghost' ? '👻' : st === 'dead' ? '💀' : '🕯️'}</span>
+          <div class="candle-bar-wrap">
+            <div class="candle-bar-fill candle-fill"
+                 data-uid="${uid}"
+                 style="width:${ratio}%;background:${candleColor(sec, max)}">
+            </div>
+          </div>
+          <span class="candle-time ${timeClass(sec, max)}" data-uid="${uid}">${formatTime(sec)}</span>
+        </div>
+
+        ${pairing && pairing.status === 'accepted' ? `
+          <div class="conv-banner">🔥 <b>${partnerName}</b> と会話中</div>
+        ` : ''}
+        ${pairing && pairing.status === 'pending' ? `
+          <div class="conv-banner" style="color:#e67e22;border-color:rgba(230,126,34,.3)">⏳ <b>${partnerName}</b> にリクエスト中</div>
+        ` : ''}
+
+        <div class="p-meta">
+          <span>参加: ${fmtHHMMSS(u.startedAt)}</span>
+          ${u.isGhost ? `<span>👻 助けた数: ${u.ghostHelped || 0}/3</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderPairings() {
+  const list = document.getElementById('pairings-list');
+  const active = Object.entries(pairings).filter(([, p]) =>
+    (p.status === 'accepted' || p.status === 'pending') && !p.completed
+  );
+
+  if (active.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="icon">🔥</div>現在ペアリングはありません</div>';
+    return;
+  }
+
+  list.innerHTML = active.map(([pid, p]) => {
+    const giverName    = p.giverUid === p.uidA ? p.nameA : p.nameB;
+    const receiverName = p.giverUid === p.uidA ? p.nameB : p.nameA;
+    const statusLabel  = p.status === 'accepted' ? '🔥 会話中' : '⏳ 承認待ち';
+    const ghostLabel   = p.ghostInitiated ? ' (幽霊から)' : '';
+
+    return `
+      <div class="pair-card">
+        <div>
+          <div class="pair-name">${giverName}</div>
+          <div class="pair-role">あげる側${ghostLabel}</div>
+        </div>
+        <div class="pair-arrow">🔥</div>
+        <div style="text-align:right">
+          <div class="pair-name">${receiverName}</div>
+          <div class="pair-role">もらう側</div>
+        </div>
+        <div class="pair-status">${statusLabel}　お題: 「${p.topic || '─'}」</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── タブ切り替え ─────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+  });
+});
+
+// ─── フィルター ───────────────────────────────────────────────────────────
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active-filter'));
+    btn.classList.add('active-filter');
+    currentFilter = btn.dataset.filter;
+    renderParticipants();
+  });
+});
+document.querySelector('[data-filter="all"]').classList.add('active-filter');
+
+// ─── ソート ───────────────────────────────────────────────────────────────
+document.getElementById('sort-select').addEventListener('change', e => {
+  currentSort = e.target.value;
+  renderParticipants();
+});
+</script>
+</body>
+</html>
