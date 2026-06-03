@@ -341,6 +341,18 @@
 </head>
 <body>
 
+<!-- ローディング/エラーオーバーレイ -->
+<div id="loading-overlay" style="
+  position:fixed;inset:0;z-index:9999;
+  background:#0a0a0f;
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:16px;
+  font-family:'Segoe UI',-apple-system,sans-serif;color:#e8e8f0;">
+  <div style="font-size:40px;animation:flicker 1.8s ease infinite">🕯️</div>
+  <div style="font-size:15px;font-weight:600">Firebase に接続中...</div>
+  <div style="font-size:12px;color:#666">しばらくお待ちください</div>
+</div>
+
 <!-- ヘッダー -->
 <header>
   <div class="header-title">
@@ -422,8 +434,9 @@
 
 <!-- Firebase SDK (CDN) -->
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { initializeApp }              from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue }  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 // ─── Firebase 設定（shinking-night と同じプロジェクト）───────────────────
 const firebaseConfig = {
@@ -436,8 +449,9 @@ const firebaseConfig = {
   appId: "1:1046470684524:web:b07e305deab1645d7f8d49"
 };
 
-const app = initializeApp(firebaseConfig);
-const db  = getDatabase(app);
+const app  = initializeApp(firebaseConfig);
+const db   = getDatabase(app);
+const auth = getAuth(app);
 
 // ─── グローバル状態 ───────────────────────────────────────────────────────
 let users    = {};   // uid → user data
@@ -493,9 +507,9 @@ function addLog(cls, msg) {
   while (log.children.length > 200) log.removeChild(log.lastChild);
 }
 
-// ─── Firebase リッスン ────────────────────────────────────────────────────
+// ─── 認証 → リッスン開始 ─────────────────────────────────────────────────
 
-// 接続状態
+// 接続状態は認証不要で常時監視
 onValue(ref(db, '.info/connected'), snap => {
   const online = snap.val() === true;
   const dot  = document.getElementById('connection-dot');
@@ -503,6 +517,40 @@ onValue(ref(db, '.info/connected'), snap => {
   dot.className  = online ? '' : 'offline';
   stat.textContent = online ? 'リアルタイム接続中' : 'オフライン';
 });
+
+// ─── 匿名ログイン後にデータ取得開始 ─────────────────────────────────────
+const loadingEl = document.getElementById('loading-overlay');
+signInAnonymously(auth)
+  .then(() => {
+    if (loadingEl) loadingEl.remove();
+    startListening();
+  })
+  .catch(err => {
+    if (loadingEl) {
+      loadingEl.innerHTML = `
+        <div style="text-align:center;padding:40px">
+          <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+          <div style="font-size:16px;font-weight:bold;color:#e74c3c;margin-bottom:8px">接続エラー</div>
+          <div style="font-size:13px;color:#aaa;max-width:320px">
+            ${err.code === 'auth/network-request-failed'
+              ? 'ネットワークに接続されていないか、<br><b>file:// で直接開いています。</b><br><br>サーバー経由で開いてください（下記手順参照）。'
+              : `エラー: ${err.message}`}
+          </div>
+          <div style="margin-top:24px;background:#1a1a2a;border:1px solid #333;border-radius:10px;padding:16px;text-align:left;font-size:12px;font-family:monospace;color:#aaa">
+            <b style="color:#fff">ローカルで開く場合：</b><br><br>
+            # Python 3<br>
+            python -m http.server 8080<br><br>
+            # Node.js<br>
+            npx serve .<br><br>
+            ↓ 起動後にブラウザで開く<br>
+            <b style="color:#5dade2">http://localhost:8080/shinking-night-admin/</b>
+          </div>
+        </div>`;
+    }
+    console.error('Firebase auth error:', err);
+  });
+
+function startListening() {
 
 // ユーザー一覧
 onValue(ref(db, 'users'), snap => {
@@ -764,6 +812,8 @@ document.getElementById('sort-select').addEventListener('change', e => {
   currentSort = e.target.value;
   renderParticipants();
 });
+
+} // end startListening
 </script>
 </body>
 </html>
